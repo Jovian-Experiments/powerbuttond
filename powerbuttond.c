@@ -19,8 +19,8 @@ extern char** environ;
 void signal_handler(int) {
 }
 
-struct libevdev* find_dev(void) {
-	int fd = open("/dev/input/by-path/platform-i8042-serio-0-event-kbd", O_RDONLY);
+struct libevdev* open_dev(const char* path) {
+	int fd = open(path, O_RDONLY);
 	if (fd < 0) {
 		return NULL;
 	}
@@ -56,6 +56,8 @@ void do_press(const char* type) {
 }
 
 int main() {
+	const char* device_path = "/dev/input/by-path/platform-i8042-serio-0-event-kbd";
+
 	struct sigaction sa = {
 		.sa_handler = signal_handler,
 		.sa_flags = SA_NOCLDSTOP,
@@ -63,8 +65,9 @@ int main() {
 	sigemptyset(&sa.sa_mask);
 	sigaction(SIGALRM, &sa, NULL);
 
-	struct libevdev* dev = find_dev();
+	struct libevdev* dev = open_dev(device_path);
 	if (!dev) {
+		fprintf(stderr, "error: Could not open device '%s'...", device_path);
 		return 1;
 	}
 
