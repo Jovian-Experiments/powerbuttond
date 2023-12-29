@@ -4,6 +4,7 @@
 // Maintainer: Vicki Pfau <vi@endrift.com>
 #include <errno.h>
 #include <fcntl.h>
+#include <glob.h>
 #include <libevdev/libevdev.h>
 #include <limits.h>
 #include <signal.h>
@@ -20,7 +21,7 @@ void signal_handler(int) {
 }
 
 struct libevdev* open_dev(const char* path) {
-	int fd = open(path, O_RDONLY);
+	int fd = open(path, O_RDONLY | O_NONBLOCK);
 	if (fd < 0) {
 		return NULL;
 	}
@@ -56,7 +57,15 @@ void do_press(const char* type) {
 }
 
 int main() {
-	const char* device_path = "/dev/input/by-path/platform-i8042-serio-0-event-kbd";
+	bool press_active = false;
+	bool long_press_fired = false;
+	size_t num_devices = 0;
+	const char* device_path;
+	struct libevdev** evdev_devices;
+	fd_set fds;
+	int maxfd = 0;
+
+	FD_ZERO(&fds);
 
 	struct sigaction sa = {
 		.sa_handler = signal_handler,
@@ -65,31 +74,85 @@ int main() {
 	sigemptyset(&sa.sa_mask);
 	sigaction(SIGALRM, &sa, NULL);
 
-	struct libevdev* dev = open_dev(device_path);
-	if (!dev) {
-		fprintf(stderr, "error: Could not open device '%s'...", device_path);
-		return 1;
+	glob_t buf;
+	glob("/dev/input/event[0-9]*", 0, NULL, &buf);
+	fprintf(stderr, "\n");
+	fprintf(stderr, "info: %ld candidate devices...\n", buf.gl_pathc);
+	fprintf(stderr, "\n");
+
+	evdev_devices = calloc(buf.gl_pathc, sizeof(struct libevdev*));
+
+	for (size_t i = 0; i < buf.gl_pathc; i++) {
+		device_path = buf.gl_pathv[i];
+
+		struct libevdev* dev = open_dev(device_path);
+		if (dev) {
+			fprintf(stderr, "info: opened '%s'\n", device_path);
+			fprintf(stderr, "    Input device name: \"%s\"\n", libevdev_get_name(dev));
+			if (libevdev_has_event_type(dev, EV_KEY) && libevdev_has_event_code(dev, EV_KEY, KEY_POWER)) {
+				evdev_devices[num_devices] = dev;
+				num_devices++;
+			}
+			else {
+				fprintf(stderr, "    Ignoring device since it does not have KEY_POWER.\n");
+			}
+			fprintf(stderr, "\n");
+		}
 	}
 
-	bool press_active = false;
+	evdev_devices = realloc(evdev_devices, num_devices * sizeof(struct libevdev*));
+	fprintf(stderr, "Found %ld power button devices.\n", num_devices);
+
+	if (num_devices == 0) {
+		fprintf(stderr, "ABORTING!\n");
+		return 1;
+	}
+	fprintf(stderr, "\n");
+
+	for (size_t i = 0; i < num_devices; i++) {
+		int fd = libevdev_get_fd(evdev_devices[i]);
+		FD_SET(fd, &fds);
+		if (fd > maxfd) {
+			maxfd = fd;
+		}
+	}
+
+	// highest-numbered file descriptor in any of the sets, plus 1.
+	maxfd++;
+
 	while (true) {
-		struct input_event ev;
-		int res = libevdev_next_event(dev, LIBEVDEV_READ_FLAG_BLOCKING, &ev);
-		if (res == LIBEVDEV_READ_STATUS_SUCCESS) {
-			if (ev.type == EV_KEY && ev.code == KEY_POWER) {
-				if (ev.value == 1) {
-					press_active = true;
-					alarm(1);
-				} else if (press_active) {
-					press_active = false;
-					alarm(0);
-					do_press("short");
-				}
-			}
-		} else if (res == -EINTR && press_active) {
+		// Block until any of the file descriptors are ready
+		int res_select = select(maxfd, &fds, NULL, NULL, NULL);
+
+		if (res_select < 0 && errno == EINTR && press_active) {
 			press_active = false;
 			alarm(0);
+			long_press_fired = true;
 			do_press("long");
+		}
+
+		for (size_t i = 0; i < num_devices; i++) {
+			struct libevdev* dev = evdev_devices[i];
+			// Pump all events out of the device
+			while (libevdev_has_event_pending(dev)) {
+				struct input_event ev;
+				int res = libevdev_next_event(dev, LIBEVDEV_READ_FLAG_NORMAL, &ev);
+				if (res == LIBEVDEV_READ_STATUS_SUCCESS) {
+					if (ev.type == EV_KEY && ev.code == KEY_POWER) {
+						if (long_press_fired) {
+							long_press_fired = false;
+						}
+						else if (ev.value == 1) {
+							press_active = true;
+							alarm(1);
+						} else if (press_active) {
+							press_active = false;
+							alarm(0);
+							do_press("short");
+						}
+					}
+				}
+			}
 		}
 	}
 }
