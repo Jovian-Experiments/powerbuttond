@@ -1,4 +1,4 @@
-CFLAGS := $(shell pkg-config --cflags libevdev) -Wall -Wextra -O2
+CFLAGS := $(shell pkg-config --cflags libevdev) -Wall -Wextra -O2 -Werror
 LDFLAGS := $(shell pkg-config --libs libevdev) -O2
 
 all: powerbuttond
