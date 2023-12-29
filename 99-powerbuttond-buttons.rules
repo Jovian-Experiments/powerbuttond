@@ -1,0 +1,10 @@
+# These rules are used to provide access to the power button device to the current seat.
+
+SUBSYSTEM=="input", ATTRS{phys}=="isa0060/serio0/input0", \
+	MODE="0660", \
+	TAG+="uaccess"
+
+SUBSYSTEM=="input", DEVPATH=="/devices/LNXSYSTM:*", TAG=="power-switch", \
+  MODE="0660", \
+  TAG+="uaccess", \
+  SYMLINK+="input/by-path/$env{ID_PATH}-event"

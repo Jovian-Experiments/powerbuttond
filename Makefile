@@ -16,3 +16,4 @@ clean:
 install: all LICENSE
 	install -D -m 755 powerbuttond $(DESTDIR)/usr/lib/hwsupport/powerbuttond
 	install -D -m 644 LICENSE $(DESTDIR)/usr/share/licenses/powerbuttond
+	install -D -m 644 99-powerbuttond-buttons.rules $(DESTDIR)/usr/lib/udev/rules.d/99-powerbuttond-buttons.rules
