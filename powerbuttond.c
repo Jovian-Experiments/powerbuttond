@@ -30,7 +30,19 @@ struct libevdev* open_dev(const char* path) {
 		close(fd);
 		return NULL;
 	}
-	return dev;
+
+	fprintf(stderr, "info: opened '%s'\n", path);
+	fprintf(stderr, "    Input device name: \"%s\"\n", libevdev_get_name(dev));
+	if (libevdev_has_event_type(dev, EV_KEY) && libevdev_has_event_code(dev, EV_KEY, KEY_POWER)) {
+		fprintf(stderr, "\n");
+		return dev;
+	}
+
+	fprintf(stderr, "    Ignoring device since it does not have KEY_POWER.\n");
+	libevdev_free(dev);
+	close(fd);
+	fprintf(stderr, "\n");
+	return NULL;
 }
 
 void do_press(const char* type) {
@@ -87,16 +99,8 @@ int main() {
 
 		struct libevdev* dev = open_dev(device_path);
 		if (dev) {
-			fprintf(stderr, "info: opened '%s'\n", device_path);
-			fprintf(stderr, "    Input device name: \"%s\"\n", libevdev_get_name(dev));
-			if (libevdev_has_event_type(dev, EV_KEY) && libevdev_has_event_code(dev, EV_KEY, KEY_POWER)) {
-				evdev_devices[num_devices] = dev;
-				num_devices++;
-			}
-			else {
-				fprintf(stderr, "    Ignoring device since it does not have KEY_POWER.\n");
-			}
-			fprintf(stderr, "\n");
+			evdev_devices[num_devices] = dev;
+			num_devices++;
 		}
 	}
 
