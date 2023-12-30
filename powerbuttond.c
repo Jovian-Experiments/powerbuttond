@@ -68,6 +68,22 @@ void do_press(const char* type) {
 	}
 }
 
+int reset_fds(struct libevdev** evdev_devices, size_t num_devices, fd_set* fds) {
+	int maxfd = 0;
+	FD_ZERO(fds);
+
+	for (size_t i = 0; i < num_devices; i++) {
+		int fd = libevdev_get_fd(evdev_devices[i]);
+		FD_SET(fd, fds);
+		if (fd > maxfd) {
+			maxfd = fd;
+		}
+	}
+
+	// highest-numbered file descriptor in any of the sets, plus 1.
+	return maxfd + 1;
+}
+
 int main() {
 	bool press_active = false;
 	bool long_press_fired = false;
@@ -76,8 +92,6 @@ int main() {
 	struct libevdev** evdev_devices;
 	fd_set fds;
 	int maxfd = 0;
-
-	FD_ZERO(&fds);
 
 	struct sigaction sa = {
 		.sa_handler = signal_handler,
@@ -113,18 +127,9 @@ int main() {
 	}
 	fprintf(stderr, "\n");
 
-	for (size_t i = 0; i < num_devices; i++) {
-		int fd = libevdev_get_fd(evdev_devices[i]);
-		FD_SET(fd, &fds);
-		if (fd > maxfd) {
-			maxfd = fd;
-		}
-	}
-
-	// highest-numbered file descriptor in any of the sets, plus 1.
-	maxfd++;
 
 	while (true) {
+		maxfd = reset_fds(evdev_devices, num_devices, &fds);
 		// Block until any of the file descriptors are ready
 		int res_select = select(maxfd, &fds, NULL, NULL, NULL);
 
