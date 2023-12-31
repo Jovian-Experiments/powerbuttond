@@ -85,7 +85,7 @@ int reset_fds(struct libevdev** evdev_devices, size_t num_devices, fd_set* fds) 
 }
 
 int main() {
-	bool press_active = false;
+	int presses_active = 0;
 	bool long_press_fired = false;
 	size_t num_devices = 0;
 	const char* device_path;
@@ -133,8 +133,8 @@ int main() {
 		// Block until any of the file descriptors are ready
 		int res_select = select(maxfd, &fds, NULL, NULL, NULL);
 
-		if (res_select < 0 && errno == EINTR && press_active) {
-			press_active = false;
+		if (res_select < 0 && errno == EINTR && presses_active > 0) {
+			presses_active = 0;
 			alarm(0);
 			long_press_fired = true;
 			do_press("long");
@@ -152,12 +152,14 @@ int main() {
 							long_press_fired = false;
 						}
 						else if (ev.value == 1) {
-							press_active = true;
+							presses_active++;
 							alarm(1);
-						} else if (press_active) {
-							press_active = false;
-							alarm(0);
-							do_press("short");
+						} else if (presses_active > 0) {
+							presses_active--;
+							if (presses_active == 0) {
+								alarm(0);
+								do_press("short");
+							}
 						}
 					}
 				}
