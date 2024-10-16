@@ -46,16 +46,13 @@ struct libevdev* open_dev(const char* path) {
 }
 
 void do_press(const char* type) {
-	char steam[PATH_MAX];
 	char press[32];
-	char* home = getenv("HOME");
-	char* const args[] = {steam, "-ifrunning", press, NULL};
+	char* const args[] = {"steam", "-ifrunning", press, NULL};
 
-	snprintf(steam, sizeof(steam), "%s/.steam/root/ubuntu12_32/steam", home);
 	snprintf(press, sizeof(press), "steam://%spowerpress", type);
 
 	pid_t pid;
-	if (posix_spawn(&pid, steam, NULL, NULL, args, environ) < 0) {
+	if (posix_spawnp(&pid, "steam", NULL, NULL, args, environ) < 0) {
 		return;
 	}
 	while (true) {
